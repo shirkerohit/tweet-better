@@ -166,7 +166,7 @@ Expand **Activity Log** in the popup or sidebar for step-by-step diagnostics.
 
 ## License
 
-Private project. Add your license here if you plan to open-source.
+MIT licence
 
 ---
 
