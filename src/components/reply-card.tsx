@@ -9,7 +9,6 @@ import type { ReplySuggestion } from '@/types'
 interface ReplyCardProps {
   reply: ReplySuggestion
   index: number
-  onInsert: (text: string) => void
 }
 
 function ToneStars({ count }: { count: number }) {
@@ -20,7 +19,7 @@ function ToneStars({ count }: { count: number }) {
   )
 }
 
-export function ReplyCard({ reply, index, onInsert }: ReplyCardProps) {
+export function ReplyCard({ reply, index }: ReplyCardProps) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(reply.text)
   const [copied, setCopied] = useState(false)
@@ -62,10 +61,7 @@ export function ReplyCard({ reply, index, onInsert }: ReplyCardProps) {
           )}
 
           <div className="flex gap-2">
-            <Button size="sm" onClick={() => onInsert(text)} className="flex-1">
-              Insert
-            </Button>
-            <Button size="sm" variant="outline" onClick={handleCopy}>
+            <Button size="sm" variant="outline" onClick={handleCopy} className="flex-1">
               <Copy className="h-3.5 w-3.5" />
               {copied ? 'Copied' : 'Copy'}
             </Button>

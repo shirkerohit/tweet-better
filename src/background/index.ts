@@ -1,15 +1,24 @@
 import { addActivityLog, clearActivityLogs, getActivityLogs } from '@/core/activity-log'
-import { getCachedReplies, setCachedReplies } from '@/core/cache'
+import { clearCachedReplies, getCachedReplies, setCachedReplies } from '@/core/cache'
 import { buildGenerationContext } from '@/core/context-builder'
 import { getSessionState, setSessionState } from '@/core/session-state'
 import { loadSettings } from '@/core/storage'
 import { createProvider } from '@/providers'
-import type { ExtensionMessage, ProviderError, ReplySuggestion, TweetData } from '@/types'
+import type { AppSettings, ExtensionMessage, ProviderError, ReplySuggestion, TweetData } from '@/types'
 
 let currentAbort: AbortController | null = null
 let generationSeq = 0
 
-const VERSION = '0.2.4'
+const VERSION = '0.2.5'
+
+let cachedSettings: AppSettings | null = null
+
+async function refreshSettingsCache(): Promise<AppSettings> {
+  cachedSettings = await loadSettings()
+  return cachedSettings
+}
+
+void refreshSettingsCache()
 
 addActivityLog('info', 'background', `Service worker started (v${VERSION})`)
 
@@ -85,18 +94,27 @@ async function handleMessage(message: ExtensionMessage, tabId?: number): Promise
       return { ok: true }
     }
 
-    case 'INSERT_REPLY': {
-      const { text } = message.payload as { text: string }
+    case 'REGENERATE_LAST': {
       const session = await getSessionState()
-      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
-      const targetTabId = tabId ?? session.sourceTabId ?? activeTab?.id
-      if (!targetTabId) return { ok: false, message: 'No x.com tab found' }
-      try {
-        const result = await chrome.tabs.sendMessage(targetTabId, { type: 'INSERT_REPLY', payload: { text } })
-        return { ok: result?.ok === true, message: result?.message }
-      } catch {
-        return { ok: false, message: 'Content script not loaded — refresh x.com' }
+      const targetTabId = tabId ?? session.sourceTabId
+      if (!session.currentTweet || !targetTabId) {
+        return { ok: false, message: 'Nothing to regenerate — select tweet text first' }
       }
+      await clearCachedReplies(session.currentTweet.id)
+      await generateFromSelection(
+        session.currentTweet.text,
+        targetTabId,
+        session.currentTweet.url,
+        Date.now(),
+        true,
+      )
+      return { ok: true }
+    }
+
+    case 'SETTINGS_UPDATED': {
+      await refreshSettingsCache()
+      await broadcastToTwitterTabs({ type: 'SETTINGS_UPDATED' })
+      return { ok: true }
     }
 
     case 'GET_SETTINGS':
@@ -157,7 +175,13 @@ function hash(s: string): string {
   return String(Math.abs(h))
 }
 
-async function generateFromSelection(text: string, tabId: number, url: string, clientGenId?: number) {
+async function generateFromSelection(
+  text: string,
+  tabId: number,
+  url: string,
+  clientGenId?: number,
+  skipCache = false,
+) {
   const genId = clientGenId ?? ++generationSeq
   if (!clientGenId) generationSeq = genId
   else if (genId > generationSeq) generationSeq = genId
@@ -170,11 +194,13 @@ async function generateFromSelection(text: string, tabId: number, url: string, c
   await setSessionState({ currentTweet: tweet, generating: true, error: null, replies: [], sourceTabId: tabId })
   notifyGeneration(tabId, { type: 'GENERATION_STARTED', payload: { tweet, sourceText: text, generationId: genId } })
 
-  const cached = await getCachedReplies(tweet.id)
-  if (cached) {
-    if (genId !== generationSeq) return
-    await finishGeneration(tabId, tweet, cached.replies, text, true, genId)
-    return
+  if (!skipCache) {
+    const cached = await getCachedReplies(tweet.id)
+    if (cached) {
+      if (genId !== generationSeq) return
+      await finishGeneration(tabId, tweet, cached.replies, text, true, genId)
+      return
+    }
   }
 
   try {
@@ -234,8 +260,18 @@ function sendToTab(tabId: number, message: ExtensionMessage) {
   })
 }
 
+async function broadcastToTwitterTabs(message: ExtensionMessage) {
+  const tabs = await chrome.tabs.query({ url: ['https://x.com/*', 'https://twitter.com/*'] })
+  for (const tab of tabs) {
+    if (tab.id) chrome.tabs.sendMessage(tab.id, message).catch(() => {})
+  }
+}
+
 /** Open side panel synchronously while user-gesture is still valid. Do not await before calling this. */
 function openSidePanelNow(tabId: number, windowId?: number) {
+  const autoOpen = cachedSettings?.openSidePanelAutomatically ?? true
+  if (!autoOpen) return
+
   enableSidePanelOnTab(tabId)
   chrome.sidePanel.open({ tabId }).catch(() => {
     if (windowId) {

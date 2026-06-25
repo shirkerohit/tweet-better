@@ -127,8 +127,8 @@ export interface ProviderError {
 
 export type MessageType =
   | 'GENERATE_FROM_SELECTION'
+  | 'REGENERATE_LAST'
   | 'TRIGGER_GENERATE'
-  | 'INSERT_REPLY'
   | 'OPEN_SIDE_PANEL'
   | 'SETTINGS_UPDATED'
   | 'GENERATION_RESULT'

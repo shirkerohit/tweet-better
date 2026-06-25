@@ -1,4 +1,4 @@
-// Tweet Better  v0.2.4 — Select text → Generate → Pick reply → Insert
+// Tweet Better  v0.2.5 — Select text → Generate → Copy reply
 (function () {
   'use strict';
   if (window.__TWITTER_COPILOT_V2__) return;
@@ -8,9 +8,15 @@
   var picker = null;
   var lastSelection = '';
   var lastSelectionRect = null;
-  var lastTweetArticle = null;
   var currentGenId = 0;
   var pendingGenId = 0;
+  var generateMode = 'focus';
+
+  function loadContentSettings() {
+    chrome.runtime.sendMessage({ type: 'GET_SETTINGS' }, function (s) {
+      if (s && s.generateMode) generateMode = s.generateMode;
+    });
+  }
 
   // ─── Styles ───────────────────────────────────────────────
   var CSS = document.createElement('style');
@@ -47,12 +53,11 @@
     }
     #tac-picker .tac-card .tac-tone { font-size: 11px; color: #1d9bf0; font-weight: 600; margin-bottom: 6px; }
     #tac-picker .tac-card .tac-text { font-size: 14px; line-height: 1.45; margin-bottom: 10px; }
-    #tac-picker .tac-insert {
-      background: #1d9bf0; color: #fff; border: none; border-radius: 6px;
+    #tac-picker .tac-copy {
+      background: transparent; color: #1d9bf0; border: 1px solid #38444d; border-radius: 6px;
       padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
     }
-    #tac-picker .tac-insert:hover { background: #1a8cd8; }
-    #tac-picker .tac-insert:disabled { opacity: .6; cursor: default; }
+    #tac-picker .tac-copy:hover { background: #1e2732; border-color: #1d9bf0; }
     #tac-picker .tac-status { font-size: 11px; color: #71767b; margin-left: 8px; }
     #tac-picker .tac-loading { padding: 24px; text-align: center; color: #71767b; font-size: 13px; }
     #tac-picker .tac-error { padding: 16px; color: #f4212e; font-size: 13px; }
@@ -77,135 +82,8 @@
     return sel.getRangeAt(0).getBoundingClientRect();
   }
 
-  function findTweetArticle(node) {
-    var el = node && (node.nodeType === 3 ? node.parentElement : node);
-    while (el && el !== document.body) {
-      if (el.matches && el.matches('article[data-testid="tweet"], article[role="article"]')) return el;
-      el = el.parentElement;
-    }
-    return null;
-  }
-
   function isOurUI(el) {
     return !!(el && el.closest && (el.closest('#tac-picker') || el.closest('#tac-toolbar') || el.closest('#tac-fab')));
-  }
-
-  function isEditableElement(el) {
-    if (!el || el === document.body || el === document.documentElement || isOurUI(el)) return false;
-    var tag = el.tagName;
-    if (tag === 'TEXTAREA' || tag === 'INPUT') {
-      var type = (el.type || 'text').toLowerCase();
-      return type === 'text' || type === 'search' || type === 'email' || type === 'url' || type === 'tel' || type === 'password' || type === '';
-    }
-    return el.isContentEditable || el.getAttribute('contenteditable') === 'true' || el.getAttribute('role') === 'textbox';
-  }
-
-  function dispatchInput(el, text) {
-    try {
-      el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
-    } catch (e) {
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
-  function setElementText(el, text) {
-    el.focus();
-    if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
-      el.value = text;
-      dispatchInput(el, text);
-      return;
-    }
-    try {
-      var sel = window.getSelection();
-      var range = document.createRange();
-      range.selectNodeContents(el);
-      sel.removeAllRanges();
-      sel.addRange(range);
-      if (document.execCommand('insertText', false, text)) {
-        dispatchInput(el, text);
-        return;
-      }
-    } catch (e) { /* fall through */ }
-    el.textContent = text;
-    dispatchInput(el, text);
-  }
-
-  function findVisibleComposer() {
-    var selectors = [
-      '[data-testid="tweetTextarea_0"]',
-      '[data-testid="tweetTextarea_1"]',
-      'div[data-testid^="tweetTextarea"]',
-      'div[contenteditable="true"][role="textbox"]',
-      'div[contenteditable="true"][data-testid="dmComposerTextInput"]',
-    ];
-    for (var s = 0; s < selectors.length; s++) {
-      var nodes = document.querySelectorAll(selectors[s]);
-      for (var i = 0; i < nodes.length; i++) {
-        var el = nodes[i];
-        if (isOurUI(el)) continue;
-        var rect = el.getBoundingClientRect();
-        if (rect.width > 8 && rect.height > 8) return el;
-      }
-    }
-    return null;
-  }
-
-  function rememberTweetContext() {
-    var sel = window.getSelection();
-    lastTweetArticle = sel ? findTweetArticle(sel.anchorNode) : null;
-    if (!lastTweetArticle && lastSelectionRect) {
-      var hit = document.elementFromPoint(
-        Math.min(lastSelectionRect.left + 12, window.innerWidth - 1),
-        Math.min(lastSelectionRect.top + 12, window.innerHeight - 1)
-      );
-      if (hit) lastTweetArticle = findTweetArticle(hit);
-    }
-  }
-
-  function openReplyAndInsert(text, article) {
-    return new Promise(function (resolve) {
-      if (article) {
-        var replyBtn = article.querySelector('[data-testid="reply"]');
-        if (replyBtn) replyBtn.click();
-      }
-      var attempts = 0;
-      var interval = setInterval(function () {
-        attempts++;
-        var composer = findVisibleComposer();
-        if (composer) {
-          clearInterval(interval);
-          setElementText(composer, text);
-          resolve(true);
-          return;
-        }
-        if (attempts > 40) { clearInterval(interval); resolve(false); }
-      }, 100);
-    });
-  }
-
-  function insertReply(text) {
-    return new Promise(function (resolve) {
-      var active = document.activeElement;
-      if (isEditableElement(active)) {
-        setElementText(active, text);
-        resolve(true);
-        return;
-      }
-      var composer = findVisibleComposer();
-      if (composer) {
-        setElementText(composer, text);
-        resolve(true);
-        return;
-      }
-      var article = lastTweetArticle;
-      if (!article) {
-        var sel = window.getSelection();
-        article = sel ? findTweetArticle(sel.anchorNode) : null;
-      }
-      if (!article) article = document.querySelector('article[data-testid="tweet"]');
-      openReplyAndInsert(text, article).then(resolve);
-    });
   }
 
   function sendMsg(msg) {
@@ -270,6 +148,15 @@
     if (text.length < 8) { if (toolbar) toolbar.style.display = 'none'; return; }
     lastSelection = text;
     lastSelectionRect = getSelectionRect();
+    if (generateMode === 'auto') {
+      if (toolbar) toolbar.style.display = 'none';
+      startGenerate(text);
+      return;
+    }
+    if (generateMode === 'manual') {
+      if (toolbar) toolbar.style.display = 'none';
+      return;
+    }
     ensureToolbar();
     var rect = lastSelectionRect;
     if (!rect) return;
@@ -331,12 +218,12 @@
           '<div class="tac-card" data-idx="' + i + '">' +
           '<div class="tac-tone">' + esc(r.toneLabel || r.tone || 'Reply') + '</div>' +
           '<div class="tac-text">' + esc(r.text) + '</div>' +
-          '<div><button class="tac-insert" type="button">Insert</button><span class="tac-status"></span></div></div>';
+          '<div><button class="tac-copy" type="button">Copy</button><span class="tac-status"></span></div></div>';
       });
     }
     var body = picker.querySelector('.tac-body');
     body.innerHTML = html;
-    body.querySelectorAll('.tac-insert').forEach(function (btn) {
+    body.querySelectorAll('.tac-copy').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
         var card = btn.closest('.tac-card');
@@ -344,12 +231,11 @@
         var reply = replies[idx];
         if (!reply) return;
         var status = card.querySelector('.tac-status');
-        btn.disabled = true;
-        status.textContent = 'Inserting…';
-        insertReply(reply.text).then(function (ok) {
-          btn.disabled = false;
-          status.textContent = ok ? '✓ Inserted — review & post!' : '✗ Could not find reply box';
-          if (ok) setTimeout(function () { picker.style.display = 'none'; }, 1200);
+        navigator.clipboard.writeText(reply.text).then(function () {
+          status.textContent = '✓ Copied';
+          setTimeout(function () { status.textContent = ''; }, 1500);
+        }).catch(function () {
+          status.textContent = '✗ Copy failed';
         });
       });
     });
@@ -363,7 +249,6 @@
     }
     lastSelection = text;
     lastSelectionRect = getSelectionRect() || lastSelectionRect;
-    rememberTweetContext();
     pendingGenId = Date.now();
     currentGenId = pendingGenId;
     clearPickerBody();
@@ -377,7 +262,7 @@
   // ─── Message listener ─────────────────────────────────────
   chrome.runtime.onMessage.addListener(function (msg, _sender, sendResponse) {
     if (msg.type === 'PING_CONTENT_SCRIPT') {
-      sendResponse({ ok: true, version: '0.2.4', url: location.href });
+      sendResponse({ ok: true, version: '0.2.5', url: location.href });
       return true;
     }
     if (msg.type === 'TRIGGER_GENERATE') {
@@ -386,16 +271,9 @@
       sendResponse({ ok: true });
       return true;
     }
-    if (msg.type === 'INSERT_REPLY') {
-      var insertText = msg.payload && msg.payload.text;
-      if (!insertText) {
-        sendResponse({ ok: false, message: 'No text to insert' });
-        return true;
-      }
-      insertReply(insertText).then(function (ok) {
-        sendResponse({ ok: ok, message: ok ? 'Inserted' : 'No reply box found' });
-      });
-      return true;
+    if (msg.type === 'SETTINGS_UPDATED') {
+      loadContentSettings();
+      return false;
     }
     if (msg.type === 'GENERATION_STARTED') {
       var sp = msg.payload || {};
@@ -434,7 +312,7 @@
           '<b style="color:#e7e9ea">How to use:</b><br><br>' +
           '1. <b>Select</b> tweet text with your mouse<br>' +
           '2. Click <b>✨ Generate Reply</b> toolbar OR right-click → <b>Generate AI Reply</b><br>' +
-          '3. Click <b>Insert</b> on a reply — goes into your focused text box' +
+          '3. <b>Copy</b> a reply from the sidebar and paste into the reply box' +
           '</div>';
       }
     });
@@ -443,6 +321,7 @@
 
   // ─── Init ─────────────────────────────────────────────────
   function boot() {
+    loadContentSettings();
     ensureFab();
     document.addEventListener('mouseup', function () {
       setTimeout(showToolbarAtSelection, 10);
@@ -452,7 +331,7 @@
         toolbar.style.display = 'none';
       }
     });
-    console.info('[Tweet Better v0.2.4] Ready — select text to generate replies');
+    console.info('[Tweet Better v0.2.5] Ready — select text to generate replies');
   }
 
   if (document.body) boot();

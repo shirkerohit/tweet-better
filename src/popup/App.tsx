@@ -40,7 +40,7 @@ export function App() {
         <Sparkles className="h-5 w-5 text-primary" />
         <div>
           <span className="font-semibold text-sm">Tweet Better</span>
-          <p className="text-[10px] text-muted-foreground">v0.2.4</p>
+          <p className="text-[10px] text-muted-foreground">v0.2.5</p>
         </div>
       </div>
 
@@ -50,7 +50,7 @@ export function App() {
           <li>Select tweet text on x.com</li>
           <li>Click <b className="text-foreground">✨ Generate Reply</b> toolbar</li>
           <li>Or right-click → <b className="text-foreground">Generate AI Reply</b></li>
-          <li>Pick a reply from the sidebar (opens automatically)</li>
+          <li>Copy a reply from the sidebar and paste into the reply box</li>
         </ol>
       </div>
 

@@ -93,6 +93,10 @@ export function App() {
           <TabsContent value="general" className="space-y-6">
             <section className="space-y-4">
               <h2 className="font-semibold">Generation</h2>
+              <p className="text-xs text-muted-foreground">
+                These settings apply on the next generate or when you click Regenerate in the sidebar.
+              </p>
+
               <div className="space-y-2">
                 <Label>Generate Mode</Label>
                 <Select
@@ -101,15 +105,21 @@ export function App() {
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="auto">Auto Generate</SelectItem>
-                    <SelectItem value="focus">Generate on Focus</SelectItem>
-                    <SelectItem value="manual">Manual Only</SelectItem>
+                    <SelectItem value="auto">Auto — generate when text is selected</SelectItem>
+                    <SelectItem value="focus">Toolbar — show Generate button on selection</SelectItem>
+                    <SelectItem value="manual">Manual — right-click or sidebar only</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Controls how generation starts on x.com after you select tweet text.
+                </p>
               </div>
 
               <div className="flex items-center justify-between">
-                <Label>Open Side Panel Automatically</Label>
+                <div>
+                  <Label>Open Side Panel Automatically</Label>
+                  <p className="text-[11px] text-muted-foreground">Opens sidebar when a reply is generated</p>
+                </div>
                 <Switch
                   checked={settings.openSidePanelAutomatically}
                   onCheckedChange={(v) => updateSettings({ openSidePanelAutomatically: v })}
@@ -117,7 +127,10 @@ export function App() {
               </div>
 
               <div className="flex items-center justify-between">
-                <Label>Dark Mode</Label>
+                <div>
+                  <Label>Dark Mode</Label>
+                  <p className="text-[11px] text-muted-foreground">Extension UI theme</p>
+                </div>
                 <Switch
                   checked={settings.darkMode}
                   onCheckedChange={(v) => updateSettings({ darkMode: v })}
@@ -133,6 +146,7 @@ export function App() {
                   value={[settings.replyCount]}
                   onValueChange={([v]) => updateSettings({ replyCount: v })}
                 />
+                <p className="text-[11px] text-muted-foreground">Number of reply suggestions per generation</p>
               </div>
 
               <div className="space-y-2">
@@ -145,6 +159,9 @@ export function App() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Tweet reply style — change tone then click Regenerate (↻) in the sidebar
+                </p>
               </div>
             </section>
           </TabsContent>

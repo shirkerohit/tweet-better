@@ -3,8 +3,8 @@ import { defineManifest } from '@crxjs/vite-plugin'
 export default defineManifest({
   manifest_version: 3,
   name: 'Twitter AI Reply Copilot',
-  version: '0.2.4',
-  description: 'Select tweet text → Generate AI replies → Click to insert. Works with any LLM.',
+  version: '0.2.5',
+  description: 'Select tweet text → Generate AI replies → Copy and paste. Works with any LLM.',
   permissions: ['storage', 'sidePanel', 'activeTab', 'tabs', 'contextMenus'],
   host_permissions: [
     'https://x.com/*',

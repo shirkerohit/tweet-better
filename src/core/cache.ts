@@ -17,6 +17,10 @@ export async function getCachedReplies(tweetId: string): Promise<CachedReplies |
   return cached
 }
 
+export async function clearCachedReplies(tweetId: string): Promise<void> {
+  await chrome.storage.local.remove(`${CACHE_PREFIX}${tweetId}`)
+}
+
 export async function setCachedReplies(
   tweetId: string,
   replies: ReplySuggestion[],

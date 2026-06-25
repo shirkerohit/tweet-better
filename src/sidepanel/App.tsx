@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Settings, Sparkles } from 'lucide-react'
+import { RefreshCw, Settings, Sparkles } from 'lucide-react'
 import { ActivityLogPanel } from '@/components/activity-log-panel'
 import { ErrorCard } from '@/components/error-card'
 import { ReplyCard } from '@/components/reply-card'
+import { Button } from '@/components/ui/button'
 import { useActivityLogs } from '@/hooks/use-activity-logs'
 import { useSettings } from '@/hooks/use-settings'
 import type { ExtensionMessage, ProviderErrorCode, ReplySuggestion, TweetData } from '@/types'
@@ -13,7 +14,6 @@ export function App() {
   const [replies, setReplies] = useState<ReplySuggestion[]>([])
   const [tweet, setTweet] = useState<TweetData | null>(null)
   const [generating, setGenerating] = useState(false)
-  const [insertStatus, setInsertStatus] = useState<string | null>(null)
   const [error, setError] = useState<{ code: ProviderErrorCode; message: string } | null>(null)
 
   useEffect(() => {
@@ -49,6 +49,13 @@ export function App() {
     return () => chrome.runtime.onMessage.removeListener(listener)
   }, [])
 
+  const handleRegenerate = async () => {
+    if (generating || !tweet) return
+    setGenerating(true)
+    setError(null)
+    await chrome.runtime.sendMessage({ type: 'REGENERATE_LAST' })
+  }
+
   if (loading) return <div className="p-4 text-sm text-muted-foreground">Loading…</div>
 
   return (
@@ -58,20 +65,29 @@ export function App() {
           <Sparkles className="h-5 w-5 text-primary" />
           <div>
             <h1 className="font-semibold text-sm">Tweet Copilot</h1>
-            <p className="text-xs text-muted-foreground">{settings?.provider.provider} · v0.2.4</p>
+            <p className="text-xs text-muted-foreground">
+              {settings?.provider.provider} · {settings?.tone} · v0.2.5
+            </p>
           </div>
         </div>
-        <button onClick={() => chrome.runtime.openOptionsPage()}>
-          <Settings className="h-4 w-4 text-muted-foreground" />
-        </button>
+        <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 w-8 p-0"
+            title="Regenerate with current settings"
+            disabled={generating || !tweet}
+            onClick={handleRegenerate}
+          >
+            <RefreshCw className={`h-4 w-4 ${generating ? 'animate-spin' : ''}`} />
+          </Button>
+          <button type="button" onClick={() => chrome.runtime.openOptionsPage()} className="p-1.5">
+            <Settings className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </div>
       </header>
 
       <main className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* <div className="rounded-lg border border-dashed p-4 text-xs text-muted-foreground space-y-2">
-          <p className="font-medium text-foreground">Select → Generate → Pick</p>
-          <p>Highlight tweet text on x.com, then use the toolbar or right-click menu. Replies appear here in the sidebar.</p>
-        </div> */}
-
         {tweet && (
           <div className="rounded-lg border p-3 text-sm">
             <p className="text-xs text-muted-foreground mb-1">Last selection</p>
@@ -86,29 +102,12 @@ export function App() {
           </div>
         )}
         {error && <ErrorCard code={error.code} message={error.message} />}
-        {insertStatus && (
-          <p className="text-xs text-center text-muted-foreground">{insertStatus}</p>
-        )}
 
         {replies.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Latest replies</p>
+            <p className="text-xs font-medium text-muted-foreground">Latest replies — copy to paste</p>
             {replies.map((r, i) => (
-              <ReplyCard
-                key={r.id}
-                reply={r}
-                index={i}
-                onInsert={async (text) => {
-                  setInsertStatus('Inserting…')
-                  const result = await chrome.runtime.sendMessage({ type: 'INSERT_REPLY', payload: { text } })
-                  setInsertStatus(
-                    result?.ok
-                      ? '✓ Inserted into reply box on x.com'
-                      : (result?.message as string) || '✗ Open reply box on x.com, then retry',
-                  )
-                  setTimeout(() => setInsertStatus(null), 2800)
-                }}
-              />
+              <ReplyCard key={r.id} reply={r} index={i} />
             ))}
           </div>
         )}
